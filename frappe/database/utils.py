@@ -142,6 +142,23 @@ def unquote_identifier(identifier: str) -> str:
 	return identifier.replace("`", "").replace('"', "").strip()
 
 
+INDEX_COLUMN_PATTERN = re.compile(r"(\w+)(\(\d+\))?")
+
+
+def quote_index_columns(fields: list[str]) -> str:
+	"""Return the column list of a MariaDB index definition, with column names quoted.
+
+	Accepts plain names (`to_date`) and names with a prefix length (`file_url(100)`), so a
+	reserved word (`to_date` since MariaDB 12.3) is a valid index column. Any other form is
+	left as it was passed.
+	"""
+	columns = []
+	for field in fields:
+		match = INDEX_COLUMN_PATTERN.fullmatch(field.strip())
+		columns.append(f"`{match[1]}`{match[2] or ''}" if match else field)
+	return ", ".join(columns)
+
+
 def get_order_by_fields(order_by: str) -> list[str]:
 	"""Return the unquoted field references of an ORDER BY clause without directions."""
 	order_by = ORDER_BY_PREFIX_PATTERN.sub("", order_by)

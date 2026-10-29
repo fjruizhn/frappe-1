@@ -9,6 +9,7 @@ from MySQLdb.converters import conversions
 import frappe
 from frappe.database.database import Database
 from frappe.database.mariadb.schema import MariaDBTable
+from frappe.database.utils import quote_index_columns
 from frappe.utils import get_datetime, get_table_name, get_timezone_utc_offset
 
 ER_STATEMENT_TIMEOUT = 1969
@@ -472,7 +473,9 @@ class MariaDBDatabase(MariaDBConnectionUtil, MariaDBExceptionUtil, Database):
 			self.commit()
 			self.sql(
 				"""ALTER TABLE `{}`
-				ADD INDEX IF NOT EXISTS `{}`({})""".format(table_name, index_name, ", ".join(fields))
+				ADD INDEX IF NOT EXISTS `{}`({})""".format(
+					table_name, index_name, quote_index_columns(fields)
+				)
 			)
 			# Ensure that DB migration doesn't clear this index, assuming this is manually added
 			# via code or console.
@@ -531,7 +534,7 @@ class MariaDBDatabase(MariaDBConnectionUtil, MariaDBExceptionUtil, Database):
 			self.commit()
 			self.sql(
 				"""alter table `tab{}`
-					add unique `{}`({})""".format(doctype, constraint_name, ", ".join(fields))
+					add unique `{}`({})""".format(doctype, constraint_name, quote_index_columns(fields))
 			)
 
 	def updatedb(self, doctype, meta=None):

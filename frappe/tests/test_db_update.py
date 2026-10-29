@@ -342,6 +342,45 @@ class TestDBUpdate(IntegrationTestCase):
 			doctype.delete()
 			frappe.db.commit()
 
+	@run_only_if(db_type_is.MARIADB)
+	def test_add_index_quotes_reserved_word_columns(self):
+		"""add_index and add_unique accept columns named like SQL reserved words, with or without a prefix length"""
+
+		# `group` is a reserved word in every MariaDB version
+		doctype = new_doctype(
+			fields=[
+				{"fieldname": "status", "fieldtype": "Data"},
+				{"fieldname": "group", "fieldtype": "Data"},
+				{"fieldname": "order", "fieldtype": "Data"},
+			]
+		).insert()
+		# add_index is DDL and commits itself, so the table outlives this test's rollback
+		self.addCleanup(frappe.db.commit)
+		self.addCleanup(doctype.delete)
+		self.addCleanup(delete_property_setter, doctype.name, "search_index")
+
+		frappe.db.add_index(doctype.name, ["status", "group"])
+		frappe.db.add_index(doctype.name, ["order(10)"])
+		frappe.db.add_unique(doctype.name, ["status", "order"])
+
+		index_columns = {}
+		for row in frappe.db.sql(f"SHOW INDEX FROM `tab{doctype.name}`", as_dict=True):
+			index_columns.setdefault(row.Key_name, []).append((row.Column_name, row.Sub_part))
+		self.assertEqual(index_columns["status_group_index"], [("status", None), ("group", None)])
+		self.assertEqual(index_columns["order_index"], [("order", 10)])
+		self.assertEqual(index_columns["unique_status_order"], [("status", None), ("order", None)])
+
+	def test_quote_index_columns(self):
+		from frappe.database.utils import quote_index_columns
+
+		self.assertEqual(quote_index_columns(["to_date"]), "`to_date`")
+		self.assertEqual(
+			quote_index_columns(["employee", " from_date ", "to_date"]), "`employee`, `from_date`, `to_date`"
+		)
+		self.assertEqual(quote_index_columns(["file_url(100)"]), "`file_url`(100)")
+		# anything else is left as it was passed
+		self.assertEqual(quote_index_columns(["`already_quoted`"]), "`already_quoted`")
+
 	@run_only_if(db_type_is.POSTGRES)
 	def test_manual_indexes_are_not_reported_as_search_indexes(self):
 		"""A partial, covering or non-btree index is never the framework's search index"""
